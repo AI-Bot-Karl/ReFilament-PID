@@ -1,5 +1,5 @@
 
-
+//#include <AutoPID.h>
 #include <max6675.h>
 #include <LiquidCrystal.h>
 #include <LiquidCrystal_I2C.h>
@@ -8,39 +8,51 @@
 #include <QueueArray.h>
 
 
-//THERMOCOUPLE
+//MAX6675 for reading THERMOCOUPLE
 int thermoDO = 2;
 int thermoCS = 3;
 int thermoCLK = 4;
 //Create Reading for MAX6675
 MAX6675 thermocouple(thermoCLK, thermoCS, thermoDO);
 
+// Temperature Gloabals
 double temp;  //holds actual Temp  
 double settemp;  //holds Settemp  
 QueueArray <double> lastTemp;  //holds last few temp values to get an average
 int queueSize = 5;  //sets amount of values for average
 
-//DISPLAY
-
+//DISPLAYS
 LiquidCrystal_I2C lcd(0x26,16,2);
+LiquidCrystal_I2C lcd2(0x27,16,2);
 
+//Buttons for PID finetuning:
+bool AState1 = false, AState2 = false, AState3 = false; // Variables to hold the state of the Analog input
+int Selector = 0; // for choosing wich value to change
 
 //PID
+int PIDout_PIN = 5;
+
+//first implementation
 //Define Variables we'll be connecting to
 double Setpoint, Input, Output;
 //Specify the links and initial tuning parameters
-double Kp=0.95, Ki=0.04, Kd=0.3;
+double Kp=4.50, Ki=0.06, Kd=5.0;
 PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd,P_ON_E,DIRECT);
 
-int PIDout = 5;
+/*
+//second implementation
+//pid settings and gains
+#define OUTPUT_MIN 0 
+#define OUTPUT_MAX 255 //for PWM analog output
+#define KP .12
+#define KI .0003
+#define KD 0 //preset values
+double temperature, setPoint, outputVal;
+AutoPID tempPID(&temperature, &setPoint, &outputVal, OUTPUT_MIN, OUTPUT_MAX, KP, KI, KD);
+*/
 
 
-//IO for PID finetuning:
-LiquidCrystal_I2C lcd2(0x27,16,2);
 
-bool AState1 = false, AState2 = false, AState3 = false; // Variables to hold the state of the Analog input
-
-int Selector = 0; // for choosing wich value to change
 
 void setup() {
   Serial.begin(9600);
@@ -134,7 +146,7 @@ void loop() {
   Setpoint = SmoothSettemp;
   Input = temp;
   myPID.Compute();
-  analogWrite(PIDout,Output);
+  analogWrite(PIDout_PIN,Output);
   
   // LCD
   lcd.clear();
@@ -164,6 +176,7 @@ void loop() {
    Serial.print(" ; ");   
    Serial.print("averageTemp = ");
    Serial.print(averageTemp);
+   Serial.print(" ; ");
    Serial.print("Kp=");
    Serial.print(Kp);
    Serial.print(" ; ");
@@ -187,12 +200,13 @@ AState1 = analog1 > 100 ? HIGH : LOW; // A/D
 AState2 = analog2 > 100 ? HIGH : LOW;
 AState3 = analog3 > 100 ? HIGH : LOW;
  //Debug output:
+ /*
 Serial.println(AState1);
 Serial.println(AState2);
 Serial.println(AState3);
 Serial.println(analog1);
 Serial.println(analog2);
-Serial.println(analog3);
+Serial.println(analog3);*/
 
 //Button Magic - Selecting the right value and +/- it
 lcd2.blink_off();
