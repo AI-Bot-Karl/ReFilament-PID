@@ -1,3 +1,17 @@
+/*
+ * PID Controller for a platic extruder
+ * 
+ * Tested on Arduino Uno
+ * 
+ * Autor: Karl Wallkum
+ * 
+ * The purpose of this PID controller is for use in the PreciousPlastic Saigon Project in combination with the extruder.
+ * The Controller is there to keep the temperature stable enough for filament production and make the machine plug and play.
+ * 
+ * Constants are Constants and shouldn't be changed. Variables are variables and should be used.
+ * The concept is not yet fully implemented~~
+ */
+
 
 //#include <AutoPID.h>
 #include <max6675.h>
@@ -6,6 +20,10 @@
 #include <Wire.h>
 #include <PID_v1.h>
 #include <QueueArray.h>
+
+/*
+ * There's no such thing as perfect. You can always be better. "The perfect is the enemy of the good" - Voltaire.
+ */
 
 // Buttons for direct control of parameters and settings:
 int b_sel = 4; //Set pin for select button here
@@ -16,7 +34,7 @@ bool sel = LOW;
 bool inc = LOW;
 bool dec = LOW;
 // Interrupt pin for buttons
-int b_IRQ = 2; //Set pin for Interrupt ReQuest (IRQ-Pin) here! Either pin 2 or 3 for Uno.
+int b_IRQ = 2; //Set pin for InterruptReQuest (IRQ-Pin) here! Either pin 2 or 3 for Uno.
 
 // Potentiometer for direct control of temperature
 int pot_temp = A0; //Set pin for Potentiometer here
@@ -61,7 +79,10 @@ double Kp=4.50, Ki=0.06, Kd=5.0; //double Kp=0.95, Ki=0.04, Kd=0.3; first values
 PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd,P_ON_E,DIRECT);
 
 /*
-//second implementation
+ * second implementation - currently working on. just introduced. Should replace old PID package...
+ * Auto PID will introduce a lot of comfort. Not tested yet!
+ */
+/*
 //pid settings and gains
 #define OUTPUT_MIN 0 
 #define OUTPUT_MAX 255 //for PWM analog output
@@ -78,43 +99,18 @@ unsigned long time_micros;
 unsigned int time_seconds;
 int time_micros_overflow;
 
+//Variables for Serial communication:
+QueueArray <char> message; //holds one message line at a time
 
+
+/*
+ * Code s written primarily for coworkers not compilers
+ */
 
 void setup() {
   Serial.begin(9600);
 
-
-  //LCD Startup sequence
-  //New Setup for I2C LCD:
-  lcd1.init();                      // initialize the lcd 
-  lcd2.init(); 
-  lcd1.backlight();                 //activate the Light
-  lcd2.backlight();
-  // Print a message to the LCD.
-  lcd1.setCursor(1,0);
-  lcd2.setCursor(1,0);
-  lcd1.print("Temperature");
-  lcd2.print("PID-Tuning");
-  lcd1.setCursor(1,1);
-  lcd2.setCursor(1,1);
-  lcd1.print("Control");
-  lcd2.print("TestSetup");
-  lcd1.blink_on();
-  lcd2.blink_on();
-  delay(1000);
-  lcd1.blink_off();
-  lcd2.blink_off();
-  for (int i=0;i <= 20; i++){ 
-    lcd1.setBacklight(i%2);
-    lcd2.setBacklight(i%2);
-    delay(100);
-  }
-  lcd1.backlight();                 //activate the Light
-  lcd2.backlight();
-  lcd1.clear();
-  lcd2.clear();
-
-
+  LCD_startup();//startup sequence for the LCD Displays - enough time for other hardware to initialize!
   // wait for MAX chip to stabilize
   //delay(500); not needed - We already wait for the display to boot
 
@@ -136,24 +132,43 @@ void setup() {
   pinMode(b_sel, INPUT); 
   pinMode(b_inc, INPUT);
   pinMode(b_dec, INPUT);
+  // Initialize Interrupt pin to recognize button push
+  attachInterrupt(digitalPinToInterrupt(b_IRQ), button_pressed, HIGH);
 
   // Initialize Analog input for Potentiometer as direct control of temperature
   pinMode(pot_temp,INPUT);
-
-
-
-  
   
 }
 
+/*
+ * Excessive spacing hides structure just as effectively as no spacing at all. 
+ */
+
+
 void loop() {
+
 
   //time since start for timing and sceduling purposes
   time_millis = millis();
   time_micros = micros();
   time_seconds = time_millis/1000;
   time_passed = ((float)time_micros/1000);
-  
+
+  //Receive commands via Serial:
+   while (Serial.available() > 0) {
+    char y;
+    for(char x; x!= "\n"; x=Serial.read()){
+      message.push(x);
+    }
+
+    while (message.count() >0){
+      y=message.pop(); //Stub for accepting messages
+    }
+    if (y=="\n"){
+      break;
+    }
+    
+   }
   
   //Read Temperature and Settemperature
   temp = thermocouple.readCelsius();
@@ -237,10 +252,16 @@ void loop() {
    Serial.print("Kd=");
    Serial.print(Kd);
    Serial.println(" ; ");
-   
-   
-   
 
+   
+   delay(200);
+}
+
+/*
+ * Simpler is usually better
+ */
+
+void button_pressed() {
 
    //Buttons for PID finetuning:
    sel = digitalRead(b_sel);
@@ -252,7 +273,6 @@ void loop() {
    Serial.println(sel);
    Serial.println(inc);
    Serial.println(dec);*/
-
 
    //Button Magic - Selecting the right value and +/- it
    lcd2.blink_off();
@@ -300,19 +320,73 @@ void loop() {
    lcd2.print(Kd);
 
    //mark current selected value ->
+   switch (Selector){
+    case 0:
+    lcd2.setCursor(6,0);
+    break;
+    case 1:
+    lcd2.setCursor(14,0);
+    break;
+    case2:
+    lcd2.setCursor(6,1);
+    break;
+    default:
+    //normally doesn't happen, so just keep the cursor where it is...
+    break;
+   }
+    /*
+   }
    if (Selector ==0){
     lcd2.setCursor(6,0);
-    lcd2.blink_on();
    }
    if (Selector ==1){
     lcd2.setCursor(14,0);
-    lcd2.blink_on();
    }
    if (Selector ==2){
     lcd2.setCursor(6,1);
-    lcd2.blink_on();
    }
-
-   
-   delay(200);
+   lcd2.blink_on();
+   */
+  
 }
+
+void LCD_startup(){
+//LCD Startup sequence
+  //local constants
+  const int LCD_blinks=10;
+  const int LCD_blinkTime=500; //min 500 for the Temp sensor
+    
+  //New Setup for I2C LCD:
+  lcd1.init();                      // initialize the lcd 
+  lcd2.init(); 
+  lcd1.backlight();                 //activate the Light
+  lcd2.backlight();
+  // Print a message to the LCD.
+  lcd1.setCursor(1,0);
+  lcd2.setCursor(1,0);
+  lcd1.print("Temperature");
+  lcd2.print("PID-Tuning");
+  lcd1.setCursor(1,1);
+  lcd2.setCursor(1,1);
+  lcd1.print("Control");
+  lcd2.print("TestSetup");
+  lcd1.blink_on();
+  lcd2.blink_on();
+  delay(1000);
+  lcd1.blink_off();
+  lcd2.blink_off();
+  for (int i=0;i <= LCD_blinks; i++){ 
+    lcd1.setBacklight(i%2);
+    lcd2.setBacklight(i%2);
+    delay(LCD_blinkTime/LCD_blinks);
+  }
+  lcd1.backlight();                 //activate the Light
+  lcd2.backlight();
+  lcd1.clear();
+  lcd2.clear();
+}
+
+/*
+ * Real Programming Languages start their Arrays at 0
+ */
+
