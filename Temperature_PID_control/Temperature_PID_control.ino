@@ -63,6 +63,13 @@ double Smoothing_Factor_SetT = 0.9; //Factor for linear Smoothing
 //DISPLAYS
 LiquidCrystal_I2C lcd1(0x26,16,2); //Adress, chars, rows
 LiquidCrystal_I2C lcd2(0x27,16,2);
+//Constants for LCD's
+int LCD1_minUpdateTime = 500; //in millis
+int LCD2_minUpdateTime = 0;//in millis
+//Variables for LCD's
+unsigned long LCD1_lastUpdate;
+unsigned long LCD2_lastUpdate;
+ 
 
 //Buttons for PID finetuning:
 bool AState1 = false, AState2 = false, AState3 = false; // Variables to hold the state of the Analog input
@@ -75,7 +82,7 @@ int PIDout_PIN = 10; // change Pin for PWM Output here!
 //Define Variables we'll be connecting to
 double Setpoint, Input, Output;
 //Specify the links and initial tuning parameters
-double Kp=4.50, Ki=0.06, Kd=5.0; //double Kp=0.95, Ki=0.04, Kd=0.3; first values Kp=4.50, Ki=0.06, Kd=5.0; finetuned values
+double Kp=4.50, Ki=0.06, Kd=2.0; //double Kp=0.95, Ki=0.04, Kd=0.3; first values Kp=4.50, Ki=0.06, Kd=5.0; finetuned values
 PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd,P_ON_E,DIRECT);
 
 /*
@@ -137,6 +144,11 @@ void setup() {
 
   // Initialize Analog input for Potentiometer as direct control of temperature
   pinMode(pot_temp,INPUT);
+
+  // Timer0 is already used for millis() - we'll just interrupt somewhere
+  // in the middle and call the "Compare A" function below
+  OCR0A = 0xAF;
+  TIMSK0 |= _BV(OCIE0A);
   
 }
 
@@ -171,7 +183,12 @@ void loop() {
    }
   
   //Read Temperature and Settemperature
+  int temp_hold = temp;
   temp = thermocouple.readCelsius();
+  if (isnan(temp)){
+    temp = temp_hold;
+  }
+  
   settemp = (analogRead(pot_temp)/3)+35;
 
   //Stablizing the Temperature over the last x values (determined by queueSize) with a simple FIFO 
@@ -253,6 +270,50 @@ void loop() {
    Serial.print(Kd);
    Serial.println(" ; ");
 
+   //Make sure the display is updated regularly
+   if ((long)(time_millis-LCD2_lastUpdate)>LCD2_minUpdateTime){
+    
+       //Button Magic - Selecting the right value and +/- it
+
+   //following code is not interrupt-friendly. It's parked here- will look for a clean solution
+
+   //Debug output - uncomment for sending raw values to serial
+   /*
+   Serial.println(sel);
+   Serial.println(inc);
+   Serial.println(dec);*/
+     
+   lcd2.blink_off();
+
+   // Write Data to LCD2
+   lcd2.clear();
+   lcd2.print("Kp=");
+   lcd2.print(Kp);
+   lcd2.print(";");
+   lcd2.print("Ki=");
+   lcd2.print(Ki);
+   lcd2.print(";");
+   lcd2.setCursor(0,1);
+   lcd2.print("Kd=");
+   lcd2.print(Kd);
+
+      if (Selector ==0){
+    lcd2.setCursor(6,0);
+   }
+   if (Selector ==1){
+    lcd2.setCursor(14,0);
+   }
+   if (Selector ==2){
+    lcd2.setCursor(6,1);
+   }
+
+   lcd2.blink_on();
+
+
+   button_pressed();
+   }
+   
+
    
    delay(200);
 }
@@ -261,21 +322,18 @@ void loop() {
  * Simpler is usually better
  */
 
+// Interrupt Service Routine (ISR)
 void button_pressed() {
+   LCD2_lastUpdate = time_millis;
 
    //Buttons for PID finetuning:
    sel = digitalRead(b_sel);
    inc = digitalRead(b_inc);
    dec = digitalRead(b_dec);
    
-   //Debug output - uncomment for sending raw values to serial
-   /*
-   Serial.println(sel);
-   Serial.println(inc);
-   Serial.println(dec);*/
 
-   //Button Magic - Selecting the right value and +/- it
-   lcd2.blink_off();
+
+
 
    if (sel == HIGH) { //cycle through values
     Selector++;
@@ -283,6 +341,7 @@ void button_pressed() {
    if (Selector >2){ //No overshoot!
     Selector=0;
    }
+   
    if (inc == HIGH) {//++
     if (Selector ==0){
       Kp = Kp +0.01;
@@ -307,19 +366,10 @@ void button_pressed() {
    }
 
 
-   // Write Data to LCD2
-   lcd2.clear();
-   lcd2.print("Kp=");
-   lcd2.print(Kp);
-   lcd2.print(";");
-   lcd2.print("Ki=");
-   lcd2.print(Ki);
-   lcd2.print(";");
-   lcd2.setCursor(0,1);
-   lcd2.print("Kd=");
-   lcd2.print(Kd);
+   
 
    //mark current selected value ->
+   /*
    switch (Selector){
     case 0:
     lcd2.setCursor(6,0);
@@ -334,8 +384,9 @@ void button_pressed() {
     //normally doesn't happen, so just keep the cursor where it is...
     break;
    }
-    /*
-   }
+   
+    
+   
    if (Selector ==0){
     lcd2.setCursor(6,0);
    }
@@ -345,10 +396,17 @@ void button_pressed() {
    if (Selector ==2){
     lcd2.setCursor(6,1);
    }
-   lcd2.blink_on();
-   */
-  
+   */  
 }
+
+
+// Interrupt is called once a millisecond, 
+SIGNAL(TIMER0_COMPA_vect) 
+{
+  unsigned long currentMillis = millis();
+
+}
+
 
 void LCD_startup(){
 //LCD Startup sequence
@@ -384,6 +442,9 @@ void LCD_startup(){
   lcd2.backlight();
   lcd1.clear();
   lcd2.clear();
+
+  //Make sure LCD2 runs from the beginning
+  button_pressed();
 }
 
 /*
